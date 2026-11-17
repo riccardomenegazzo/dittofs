@@ -159,6 +159,11 @@ suites:
       - { sh: 'test -n "$DITTOFS_BENCH_DIR" || { echo "set DITTOFS_BENCH_DIR to a directory on the device under test" >&2; exit 2; }; n=10; test -z "$ENGINE_BENCH_COUNT" || n=$ENGINE_BENCH_COUNT; case $n in [!1-9]*|*[!0-9]*) echo "ENGINE_BENCH_COUNT must be a number of 1 or more, without a leading zero" >&2; exit 2;; esac; go test -count=$n -benchtime=1x -tags=engine_conformance,engine_bench -run ^$ -bench . ./internal/vfs/integration/ > {out}/bench.txt; s=$?; cat {out}/bench.txt; exit $s' }
     tier: manual
     timeout: { test: 300m, cell: 310m }
+  # Measures only the version-limit probe, with journal setup outside the timer.
+  version-limit-probe-bench:
+    cmd:
+      - { sh: 'go test -count=10 -run ^$ -bench ^BenchmarkVersionLimitProbe$ ./pkg/block/engine > {out}/bench.txt; s=$?; cat {out}/bench.txt; exit $s' }
+    tier: manual
   # The adapters' specifications that wait on a stub, behind their own tag: each fails until the
   # epic that fills its stub, and each failure is a known one.
   adapter-conformance:
