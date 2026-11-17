@@ -265,7 +265,7 @@ subtasks and tests can cite them. Sections are RFC 8's unless named.
 | # | Requirement | Kind | Source | Subtasks |
 | --- | --- | --- | --- | --- |
 | R34 | The trigger is evaluated on every version the engine issues, not on a timer | invariant | §2.7, §15.2 sustained load | T6.7 |
-| R35 | When the versions left below the limit last passed with `SetVersionLimit`, that limit minus `Stats().NextVersion`, the count `Stats` reports, are below the larger of half a block and the peak version rate times the margin (D6), every served share's limit is raised to a block above the larger of that limit and `Stats().NextVersion`, and the new limit is passed with `SetVersionLimit` only after every share's raise has committed. The peak is the highest count of versions drawn in any one second of the last 60 s; the margin is 30 s plus the existence age plus 1 s | bound | §2.7 | T6.7 |
+| R35 | When the versions left below the limit last passed with `SetVersionLimit`, that limit minus `NextVersion()`, are below the larger of half a block and the peak version rate times the margin (D6), every served share's limit is raised to a block above the larger of that limit and `NextVersion()`, and the new limit is passed with `SetVersionLimit` only after every share's raise has committed. The peak is the highest count of versions drawn in any one second of the last 60 s; the margin is 30 s plus the existence age plus 1 s | bound | §2.7 | T6.7 |
 | R36 | `Bind` raises every served share's limit first when the counter it raised leaves fewer versions than the trigger, itself and to R35's target, under the journal's raise lock, which it holds from its limit write until it publishes (D6); a `Bind` that fails after its `Share` raised the counter calls the trigger check once (RFC 8 §2.7) | invariant | §2.5 (`Bind`) | T6.7 |
 | R37 | A write that reaches the limit is refused retry-later, never `ErrNoSpace`, and is served once the raise commits | test row | §2.7, RFC 1 §4.3, §15.1 version limit | T6.7 (the raise), T7.1 (the answer) |
 | R38 | The raise never runs on the request path: a version issued posts the check and never waits for a transaction | MUST NOT | §1.1 | T6.7 |
@@ -376,11 +376,11 @@ subtasks and tests can cite them. Sections are RFC 8's unless named.
   buckets on `Clock.Elapsed`; the margin is 30 s plus `existence_age` plus 1 s, read from the
   settings at each check. A version issued (`Write`, `Draw`, a removal's journal step, a
   clone target and its copies) calls `limits.issued(journal, v)`, which counts it and
-  compares the versions left below the limit it last passed with `SetVersionLimit`, that
-  limit minus `Stats().NextVersion`, the count `Stats` reports, with the trigger; past it, it wakes the
-  journal's raise goroutine and returns. No `Stats` call on the request path: `Stats`
-  returns copies of its per-share maps, a cost that grows with the shares on the journal.
-  The raise reads `Stats().NextVersion` once per raise and raises to a block above the
+  compares the headroom left after issuing `v` with the trigger. When the
+  raise is due it wakes the journal's raise goroutine and returns. The raise
+  and `Bind` checks read the current counter through `NextVersion()`, which
+  avoids copying the per-share maps in `Stats`.
+  The raise reads `NextVersion()` once per raise and raises to a block above the
   larger of that and the limit last passed: from the limit alone, a `Share` that moved the
   counter from about 2·10⁶ to 9·10⁸ (T6.2's case) leaves every share on the journal below
   the counter for about 50 raises, and from the counter alone, a rate term above a block
@@ -635,7 +635,7 @@ test/engine/known.yaml    T6.2 to T6.10  each new red row, naming this epic's is
   kept in the table in D9's removed state (R19, D2); each share
   given a handle on the journal its shard's record names (D10), at the larger of its floor
   and limit, and a share whose shard names no opened journal refused by name; every served
-  share's limit written at `Stats().NextVersion` plus a block, then `SetVersionLimit`; `Stats`
+  share's limit written at `NextVersion()` plus a block, then `SetVersionLimit`; `Stats`
   naming refused shares and their device; the `decision:` marker of RFC 8 §2.5 on a check's
   error.
 - **Acceptance criteria:**
@@ -781,7 +781,7 @@ test/engine/known.yaml    T6.2 to T6.10  each new red row, naming this epic's is
   in-memory journal); a step that lands after T6.7 adds its own call and test, so the call lands with
   whichever of the step and T6.7 comes second and neither waits for the other; the raise
   goroutine: `RaiseVersionLimits` for every served share to a block above the
-  larger of the limit last passed and `Stats().NextVersion`, `SetVersionLimit` after the
+  larger of the limit last passed and `NextVersion()`, `SetVersionLimit` after the
   last transaction commits, under the journal's raise lock; `Bind` holding the same lock
   from its limit write until it publishes, writing the new share's limit at the limit last
   passed or, when its `Share` left the counter within the trigger, running that raise

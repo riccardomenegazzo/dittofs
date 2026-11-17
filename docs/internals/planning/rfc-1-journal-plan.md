@@ -62,7 +62,7 @@ Epic 1 is **interfaces only**. Its output is code that compiles and does nothing
   `internal/storage` (§4, epic 1).
 - **Every exported symbol from RFC 1 §3–§4**, with its exact signature. That means
   `Init`, `Open`, `Restamp`, `Journal`, `Handle`, `Reservation`, and every method in
-  §3.1–§3.11, §4.3 (`Draw`, `SetVersionLimit`), §4.4 (inspection) and §7.2 (`Repack`).
+  §3.1–§3.11, §4.3 (`Draw`, `NextVersion`, `SetVersionLimit`), §4.4 (inspection) and §7.2 (`Repack`).
   It also means every value type (`FileID`, `Extent`, `Held`, `Version`, `ShareTag`,
   `Offer`, `Change`, `CloneSpec`, `RepackScope`, `Stats`, …) and the error
   set (`ErrNoSpace` carrying which limit refused, the stale-fill error, closed, forgotten,
@@ -513,7 +513,7 @@ func openDevice(ctx context.Context, dev Device, shares []ShareRecord) (*journal
         handles[s.ID] = h
     }
     // Raise every share's durable limit first, then SetVersionLimit with the smallest (epic 11).
-    return j, handles, j.SetVersionLimit(raiseLimits(ctx, shares, j.Stats().NextVersion))
+    return j, handles, j.SetVersionLimit(raiseLimits(ctx, shares, j.NextVersion()))
 }
 ```
 

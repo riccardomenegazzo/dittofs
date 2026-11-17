@@ -372,7 +372,7 @@ interface:
 
 | Declared by | Component | What the engine calls |
 | --- | --- | --- |
-| [RFC 1 §3](rfc-1-journal.md#3.%20Interface) | the journal | `Share`, passed the larger of the share's version floor and version limit; `Forget` (drops a tag's extents, markers and index entries through one header-only record `Since` never yields, refused while a handle of the tag is open, for a namespace moved away, an import attach or a share's removal, [RFC 1 §3](rfc-1-journal.md#3.%20Interface)); `Strand`; `Stats`; `Draw` and `SetVersionLimit` ([RFC 1 §4.3](rfc-1-journal.md#4.3%20Versions)); `Repack` with its budget and scope ([RFC 1 §7.2](rfc-1-journal.md#7.2%20Repack)); `Reconciled`, once the metadata reconcile has covered its scope ([§2.5](#2.5%20Start%20in%20order%2C%20stop%20in%20reverse%2C%20and%20join%20before%20closing)); `MarksRecorded`, after each marks transaction commits ([§5.2](#5.2%20Group%20commit%20is%20bounded%2C%20and%20retries%20only%20the%20files%20that%20conflict)); `Acknowledge`, for an unread range an operator acknowledges, then marking `failed` the snapshots its `AckResult` names as at §2.5 ([RFC 28 §3.3](rfc-28-journal-format.md#An%20operator%20acknowledges%20a%20range%20that%20never%20reads)); `Close`, after every handle ([RFC 1 §8.7](rfc-1-journal.md#8.7%20Shutdown)) |
+| [RFC 1 §3](rfc-1-journal.md#3.%20Interface) | the journal | `Share`, passed the larger of the share's version floor and version limit; `Forget` (drops a tag's extents, markers and index entries through one header-only record `Since` never yields, refused while a handle of the tag is open, for a namespace moved away, an import attach or a share's removal, [RFC 1 §3](rfc-1-journal.md#3.%20Interface)); `Strand`; `Stats`; `Draw`, `NextVersion` and `SetVersionLimit` ([RFC 1 §4.3](rfc-1-journal.md#4.3%20Versions)); `Repack` with its budget and scope ([RFC 1 §7.2](rfc-1-journal.md#7.2%20Repack)); `Reconciled`, once the metadata reconcile has covered its scope ([§2.5](#2.5%20Start%20in%20order%2C%20stop%20in%20reverse%2C%20and%20join%20before%20closing)); `MarksRecorded`, after each marks transaction commits ([§5.2](#5.2%20Group%20commit%20is%20bounded%2C%20and%20retries%20only%20the%20files%20that%20conflict)); `Acknowledge`, for an unread range an operator acknowledges, then marking `failed` the snapshots its `AckResult` names as at §2.5 ([RFC 28 §3.3](rfc-28-journal-format.md#An%20operator%20acknowledges%20a%20range%20that%20never%20reads)); `Close`, after every handle ([RFC 1 §8.7](rfc-1-journal.md#8.7%20Shutdown)) |
 | [RFC 1 §3](rfc-1-journal.md#3.%20Interface) | a share's handle on the journal | `WriteAt`, passed the write's modification time ([RFC 28 §2.3](rfc-28-journal-format.md#2.3%20Records)), `ReadAt`, `Sync`, `Offload`, `OffloadMany`, `Fill`, `Release`, `Truncate`, `Deallocate`, `Delete`, `CloneTarget` with its `CloneSpec` ([§9.1](#9.1%20Clone%20adopts%20carved%20refs%20and%20copies%20the%20rest%20locally)), `Reserve(n, writes)` and the reservation's `WriteAt` and `Close`, for a clone's copies ([RFC 1 §6](rfc-1-journal.md#6.%20Capacity)), `Close`, before the tag's `Forget`, `Since`, `Settle`, `MarkOffloaded`, `Unmark`, `DropSuperseded` ([RFC 28 §3.3](rfc-28-journal-format.md#An%20operator%20acknowledges%20a%20range%20that%20never%20reads)), `Hold`, `Stamp`, `Files`, `DirtyFiles`, and `DropOlder`, for the metadata reconcile ([§2.5](#2.5%20Start%20in%20order%2C%20stop%20in%20reverse%2C%20and%20join%20before%20closing)) |
 | [RFC 2 §2](rfc-2-carver.md#2.%20What%20one%20call%20covers), [§5](rfc-2-carver.md#5.%20The%20block%20assembler) | the carver and the block assembler | the carver's `Cut`; the assembler's fold |
 | [RFC 3 §1.3](rfc-3-syncer.md#1.3%20Interface) | the syncer | `OpenFlow`, one flow per share at attach |
@@ -1262,22 +1262,20 @@ The floor the journal opens with is one number, the largest of every served
 share's version floor and **version limit** `S‖id‖vl` ([RFC 16 §4.2](rfc-16-metadata-store.md#4.2%20Keys%3A%20per-file%2C%20per-share%2C%20content-addressed)), so the
 counter restarts above every version a crash may have lost
 ([RFC 7 §9.4](rfc-7-namespace-metadata.md#9.4%20The%20change%20attribute%20and%20ctime%20never%20move%20backward)). At start ([§2.5](#2.5%20Start%20in%20order%2C%20stop%20in%20reverse%2C%20and%20join%20before%20closing), step 1), before any version is issued, the engine writes
-every served share's limit at the journal's next version, as `Stats`
-reports it ([RFC 1 §3.7](rfc-1-journal.md#3.7%20State%20introspection)), plus one block (proposal: 2²⁴ versions; the counter
-is 64-bit), and passes it with `SetVersionLimit`
+every served share's limit at the journal's `NextVersion()` plus one block
+(proposal: 2²⁴ versions; the counter is 64-bit), and passes it with `SetVersionLimit`
 ([RFC 1 §4.3](rfc-1-journal.md#4.3%20Versions)) once every write has committed. While the journal serves, the engine raises every served
 share's limit to one block above the larger of the limit last passed with
-`SetVersionLimit` and the journal's next version, as `Stats` reports it,
-whenever `Stats` shows fewer
-versions left than the larger of half a block and the journal's peak version
+`SetVersionLimit` and the journal's `NextVersion()` whenever fewer
+versions are left than the larger of half a block and the journal's peak version
 rate times the margin, and passes the new limit only after every share's
 raise has committed. Both run in as many transactions as the key budget `K`
 takes (10⁴ shares are 2 × 10⁴ keys), never one over every share (E40). A raise
 that fails at the store is retried until it commits ([§11.2](#11.2%20Every%20condition%20in%20RFC%200%20%C2%A710%20has%20its%20engine%20behaviour%20here)). It
 evaluates that trigger on every version it issues, and once more when a `Bind`
 fails after its `Share` raised the counter ([§2.5](#2.5%20Start%20in%20order%2C%20stop%20in%20reverse%2C%20and%20join%20before%20closing)), since a journal at its limit
-issues none. The versions left are counted as `Stats` reports them: the limit
-last passed, minus the journal's next version. The **peak version rate** is the highest
+issues none. The versions left are the limit last passed minus the journal's next version,
+with zero once the counter reaches the limit. The **peak version rate** is the highest
 count of versions drawn in any one second of the last 60 s; the **margin** is
 30 s plus the existence age ([§5.1](#5.1%20Commit%20is%20answered%20by%20the%20journal)) plus one second, the trigger's own
 sampling: the self-fence can count from the last commit, which can precede the

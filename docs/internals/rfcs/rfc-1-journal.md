@@ -440,7 +440,7 @@ receives a context derived from it), `MarkOffloaded`, `Unmark`, `DropSuperseded`
 [§3.6](#3.6%20Truncate%2C%20deallocate%20and%20delete), `Since`, `Hold`, `Unhold` and `Stamp`, and the verification of [§4.4](#4.4%20Inspection), which
 reads every segment. A call that only reads or changes
 memory and never waits takes none: `Share`, `Strand`,
-`Reserve`, `Draw`, `SetVersionLimit`, `Settle`, `Held`, `Extents`, `Files`,
+`Reserve`, `Draw`, `NextVersion`, `SetVersionLimit`, `Settle`, `Held`, `Extents`, `Files`,
 `DirtyFiles`, `Stats` and `MarksRecorded`. No `Close` takes one either, the journal's, a
 handle's or a reservation's, like the syncer's, the remote tier's, the engine's
 and GC's: the journal's and a handle's wait only for calls already in flight,
@@ -1982,6 +1982,7 @@ own floor before it is served ([§3](#3.%20Interface)).
 
 ```go
 (*Journal) Draw() (Version, error)  // the next content version, with no record
+(*Journal) NextVersion() Version
 (*Journal) SetVersionLimit(mark Version) error // versions are issued only below mark
 ```
 
@@ -2008,10 +2009,12 @@ above every version issued before a crash. The journal has no limit until the
 first `SetVersionLimit` and issues nothing before it. A caller **MUST NOT** pass a
 mark with a non-zero epoch: the mark comes back as the floor at the next open,
 where a non-zero epoch fails the open. `SetVersionLimit` refuses one with
-`ErrUnknownFormat` and leaves the limit as it was. `Stats` reports the next
-version the counter will issue and the versions left below the limit, so a
-caller rebuilding its limits — after a lost store — sets them above the
-counter, never below it. The caller raises the limit, durably, by time rather
+`ErrUnknownFormat` and leaves the limit as it was. `NextVersion` reads the
+next version the counter would issue if the limit allowed it. It does not
+collect statistics and returns the zero version after `Close`. `Stats` also
+reports the next version and how many versions are left below the limit.
+A caller rebuilding its limits after a lost store sets them above the
+counter. The caller raises the limit, durably, by time rather
 than only while half remain — far enough ahead that a metadata stall does not
 exhaust it before the self-fence would ([RFC 8 §2.7](rfc-8-engine.md#2.7%20The%20version%20limit) sizes it); a
 `WriteAt`, `Draw` or header-only record that draws a new version — a truncate,
